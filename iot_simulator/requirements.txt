@@ -1,0 +1,2 @@
+kafka-python-ng>=2.2.3   # kafka-python is broken on Python 3.12+; ng is the drop-in fix
+azure-eventhub==5.11.4

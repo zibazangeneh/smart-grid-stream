@@ -1,0 +1,24 @@
+# Delta Lake data and checkpoints (generated at runtime — do not commit)
+data/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# dbt
+smart_grid_dbt/target/
+smart_grid_dbt/dbt_packages/
+smart_grid_dbt/logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets — never commit these
+*.pem
+*.key
+*credentials*.json
+*connection_string*
