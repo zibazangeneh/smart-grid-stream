@@ -6,23 +6,25 @@ sources:
     schema: RAW
     tables:
       - name: meter_readings
-        description: "Raw smart meter readings ingested via Snowpipe from Azure ADLS Gold layer"
-        freshness:
-          warn_after: {count: 10, period: minute}
-          error_after: {count: 30, period: minute}
-        loaded_at_field: ingest_timestamp
+        description: "Raw smart meter readings loaded from Silver Delta Lake layer"
         columns:
           - name: meter_id
             description: "Unique smart meter identifier"
-            tests:
+            data_tests:
               - not_null
           - name: kwh_reading
             description: "Power consumption in kilowatt-hours"
-            tests:
+            data_tests:
               - not_null
           - name: grid_zone
-            description: "German grid zone (NRW-North, NRW-South, Bavaria, Saxony, Hamburg)"
-            tests:
+            description: "German grid zone"
+            data_tests:
               - not_null
               - accepted_values:
                   values: ["NRW-North", "NRW-South", "Bavaria", "Saxony", "Hamburg"]
+          - name: meter_type
+            description: "Type of meter"
+            data_tests:
+              - not_null
+              - accepted_values:
+                  values: ["residential", "commercial", "industrial"]

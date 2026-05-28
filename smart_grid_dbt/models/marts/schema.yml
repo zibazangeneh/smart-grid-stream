@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: fct_energy_consumption
+    description: "Hourly energy consumption aggregated per meter"
+    columns:
+      - name: consumption_id
+        description: "Surrogate key (meter_id + consumption_hour)"
+        data_tests:
+          - unique
+          - not_null
+      - name: meter_id
+        data_tests:
+          - not_null
+      - name: consumption_hour
+        data_tests:
+          - not_null
+      - name: grid_zone
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ["NRW-North", "NRW-South", "Bavaria", "Saxony", "Hamburg"]
+      - name: meter_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ["residential", "commercial", "industrial"]
+
+  - name: dim_meters
+    description: "One row per smart meter"
+    columns:
+      - name: meter_id
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_grid_zones
+    description: "One row per German grid zone"
+    columns:
+      - name: grid_zone
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_dates
+    description: "Date dimension from meter reading timestamps"
+    columns:
+      - name: date_hour
+        data_tests:
+          - unique
+          - not_null
