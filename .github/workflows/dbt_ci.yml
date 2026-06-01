@@ -20,10 +20,34 @@ jobs:
       - name: Install dbt
         run: pip install dbt-snowflake==1.11.5
 
+      - name: Write profiles.yml
+        run: |
+          mkdir -p ~/.dbt
+          python -c "
+          import os
+          lines = [
+            'smart_grid:',
+            '  target: ci',
+            '  outputs:',
+            '    ci:',
+            '      type: snowflake',
+            '      account: dummy',
+            '      user: dummy',
+            '      password: dummy',
+            '      role: ACCOUNTADMIN',
+            '      warehouse: SMART_GRID_WH',
+            '      database: SMART_GRID_DB',
+            '      schema: CI',
+            '      threads: 4',
+          ]
+          open(os.path.expanduser('~/.dbt/profiles.yml'), 'w').write('\n'.join(lines))
+          print('profiles.yml written')
+          "
+
       - name: Install dbt packages
         working-directory: smart_grid_dbt
         run: dbt deps
 
-      - name: dbt compile (validates SQL without DB connection)
+      - name: dbt compile (validates all SQL without DB connection)
         working-directory: smart_grid_dbt
         run: dbt compile
