@@ -35,7 +35,7 @@ jobs:
                 type: snowflake
                 account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
                 user: ${{ secrets.SNOWFLAKE_USER }}
-                password: ${{ secrets.SNOWFLAKE_PASSWORD }}
+                password: "${{ secrets.SNOWFLAKE_PASSWORD }}"
                 role: ACCOUNTADMIN
                 warehouse: SMART_GRID_WH
                 database: SMART_GRID_DB
