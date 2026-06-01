@@ -53,6 +53,19 @@ flowchart LR
 
 ---
 
+## 📸 Screenshots
+
+**Airflow DAG — all 4 tasks green**
+![Airflow DAG](docs/airflow_dag.png)
+
+**Kafka UI — live message stream**
+![Kafka UI](docs/kafka_ui.png)
+
+**dbt lineage graph**
+![dbt lineage](docs/dbt_lineage.png)
+
+---
+
 ## 📊 Pipeline Metrics
 
 | Metric | Value |
