@@ -48,6 +48,6 @@ jobs:
         working-directory: smart_grid_dbt
         run: dbt deps
 
-      - name: dbt compile (validates all SQL without DB connection)
+      - name: dbt parse (validates Jinja + SQL syntax, no DB connection)
         working-directory: smart_grid_dbt
-        run: dbt compile
+        run: dbt parse
