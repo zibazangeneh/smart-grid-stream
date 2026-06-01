@@ -191,8 +191,8 @@ No secrets are hardcoded in this project. Set these before running:
 
 - [x] **Week 1** — Kafka setup + IoT simulator (500 smart meters)
 - [x] **Week 2** — PySpark Structured Streaming + local Delta Lake Medallion architecture (Bronze → Silver → Gold)
-- [ ] **Week 3** — dbt + Snowflake star schema
-- [ ] **Week 4** — Airflow orchestration + GitHub Actions CI/CD
+- [x] **Week 3** — dbt star schema on Snowflake (staging + intermediate + marts + tests, 27/27 passing)
+- [x] **Week 4** — Airflow orchestration + GitHub Actions CI/CD (dbt parse on every PR)
 
 ---
 
