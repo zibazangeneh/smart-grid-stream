@@ -1,4 +1,5 @@
 {{ config(materialized='view') }}
+-- Validated smart meter readings from Snowflake RAW layer
 
 select
     meter_id,
