@@ -1,10 +1,16 @@
 # ⚡ Smart Grid Stream
 
-> A real-time IoT data engineering platform I built to simulate, process, and analyze energy consumption data across German power grid zones — using a modern cloud-native stack.
+> A real-time IoT data engineering platform simulating, processing, and analyzing energy consumption across German power grid zones — built end-to-end with a modern streaming stack.
 
-![Status](https://img.shields.io/badge/status-in%20progress-orange)
-![Stack](https://img.shields.io/badge/stack-Kafka%20%7C%20PySpark%20%7C%20dbt%20%7C%20Snowflake%20%7C%20Azure-blue)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![Status](https://img.shields.io/badge/status-complete-brightgreen)
+![PySpark](https://img.shields.io/badge/PySpark-3.5.3-orange)
+![Delta Lake](https://img.shields.io/badge/Delta%20Lake-3.2.0-blue)
+![Kafka](https://img.shields.io/badge/Kafka-Confluent%207.5-black)
+![dbt](https://img.shields.io/badge/dbt-1.11-red)
+![Snowflake](https://img.shields.io/badge/Snowflake-cloud-29B5E8)
+![Airflow](https://img.shields.io/badge/Airflow-2.9-017CEE)
+![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF)
+![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -13,58 +19,91 @@
 
 Germany's *Energiewende* — the national energy transition — generates enormous amounts of sensor data across the power grid. As a data engineer based in NRW, I wanted to build something that reflects a real problem in this region: how do you process hundreds of thousands of smart meter readings in real time, detect anomalies, and make the data available for analysis?
 
-This project is my answer to that question. It's not a tutorial follow-along — I designed the architecture, chose the tools, and built it end to end. The goal was to close the gap between the batch ETL work I've done professionally and the streaming, cloud-native stack that modern senior DE roles in Germany require.
+This project is my answer. It is not a tutorial follow-along — I designed the architecture, chose the tools, and built it end to end. The goal was to close the gap between the batch ETL work I have done professionally and the streaming, cloud-native stack that modern senior DE roles in Germany require in 2026.
 
 ---
 
 ## 🏗️ Architecture
 
+```mermaid
+flowchart LR
+    subgraph Ingest
+        A[IoT Simulator\n500 smart meters\n6,000 events/min] -->|JSON over Kafka| B[Apache Kafka\nraw-meter-readings\nAnomaly-alerts]
+    end
+
+    subgraph Process
+        B --> C[PySpark\nStructured Streaming]
+        C --> D[Bronze\nRaw Delta Lake]
+        D --> E[Silver\nValidated Delta Lake]
+        E --> F[Gold\n5-min window aggs]
+    end
+
+    subgraph Warehouse
+        F -->|load_to_snowflake.py| G[Snowflake\nRAW.METER_READINGS]
+        G --> H[dbt\nstaging → intermediate → marts]
+        H --> I[fct_energy_consumption\ndim_meters\ndim_grid_zones\ndim_dates]
+    end
+
+    subgraph Orchestrate
+        J[Airflow DAG\nhourly] -->|triggers| C
+        J -->|triggers| H
+        K[GitHub Actions CI\ndbt parse on every PR] -->|validates| H
+    end
 ```
-IoT Simulator (Python)
-      │
-      │  500 virtual smart meters
-      │  one reading per meter every 5 seconds
-      │  ~6,000 events per minute
-      │
-      ▼
-Apache Kafka (local dev) / Azure Event Hubs (cloud)
-  Topics: raw-meter-readings (3 partitions) · anomaly-alerts
-      │
-      ▼
-PySpark Structured Streaming · Azure Databricks
-  • 5-minute tumbling windows with 2-minute watermark
-  • Rule-based anomaly detection (2.5× rolling baseline)
-  • Medallion architecture: Bronze → Silver → Gold
-  • Delta Lake on Azure ADLS Gen2
-      │
-      ▼
-Snowflake (auto-ingested via Snowpipe from ADLS Gold layer)
-      │
-      ▼
-dbt Core
-  staging → intermediate → marts
-  fct_energy_consumption · dim_meters · dim_grid_zones · dim_dates
-  Incremental models · source freshness checks · 100% test coverage
-      │
-      ▼
-Apache Airflow · hourly DAG · Kafka lag monitoring · failure alerts
-GitHub Actions · CI on every PR: dbt compile + dbt test
-```
+
+---
+
+## 📊 Pipeline Metrics
+
+| Metric | Value |
+|---|---|
+| Virtual smart meters | 500 |
+| Grid zones | NRW-North, NRW-South, Bavaria, Saxony, Hamburg |
+| Event throughput | ~6,000 events / minute |
+| Kafka topic partitions | 3 (keyed by meter_id) |
+| Streaming window | 5-minute tumbling, 2-minute watermark |
+| Anomaly rate | ~2% of readings (consumption spike ≥ 2.5×) |
+| dbt models | 7 (2 staging, 1 intermediate, 4 marts) |
+| dbt tests | 27 — 100% passing |
+| Bronze Delta files written | 930 |
+| Silver Delta files written | 894 |
+| Gold Delta files written | 280 |
+
+---
+
+## 🧠 Key Engineering Decisions
+
+**Why `kafka-python-ng` instead of `kafka-python`?**
+`kafka-python` is unmaintained and broken on Python 3.12+. `kafka-python-ng` is the community-maintained drop-in replacement. Switching requires changing only one line in requirements.txt — the right call for any new project in 2026.
+
+**Why watermarks on the Gold layer?**
+Smart meter data arrives out of order due to network conditions and device buffering. Without a watermark, PySpark would hold state indefinitely for every open window. The 2-minute watermark lets Spark handle late events while bounding memory usage — silently broken aggregations without it are a common production incident.
+
+**Why key Kafka messages by `meter_id`?**
+Stateful streaming aggregations require all events for the same key to land in the same partition. Keying by `meter_id` guarantees this. Using a random or round-robin key would cause incorrect windowed aggregations downstream — a subtle but critical correctness requirement.
+
+**Why local Delta Lake instead of Azure Databricks?**
+Azure free tier limits vCPU quota to 4 cores — too small for a Databricks cluster. Running PySpark locally with Delta Lake preserves the exact same API and Medallion architecture. The code is cloud-ready with a single config change (`master("local[*]")` → Databricks cluster URL).
+
+**Why `dbt parse` in CI instead of `dbt build`?**
+`dbt build` requires a live Snowflake connection, which means CI would consume warehouse credits on every PR. `dbt parse` validates all Jinja templates, SQL syntax, and model references without any database connection — fast, free, and catches the majority of real errors before merge.
+
+**Why incremental materialization on `fct_energy_consumption`?**
+The fact table grows continuously as new meter readings arrive. Recomputing the full table on every dbt run would re-aggregate all historical data. The incremental model only processes new hours since the last run, which scales linearly rather than quadratically with data volume.
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology | Why I chose it |
+| Layer | Technology | Why |
 |---|---|---|
-| Event streaming | Apache Kafka + Azure Event Hubs | Industry standard; Kafka-compatible managed service removes ops overhead |
-| Stream processing | PySpark Structured Streaming | Native windowing and late-data handling via watermarks |
-| Cloud storage | Azure ADLS Gen2 + Delta Lake | ACID transactions on streaming data; Medallion architecture |
-| Cloud compute | Azure Databricks | Managed Spark; native ADLS and Snowflake integration |
-| Data warehouse | Snowflake + Snowpipe | Auto-ingest from ADLS; separation of storage and compute |
-| Transformation | dbt Core | Version-controlled SQL; lineage docs; incremental models for streaming |
-| Orchestration | Apache Airflow | DAG-based scheduling; Kafka lag checks before triggering Spark |
-| CI/CD | GitHub Actions | dbt tests run on every PR; no broken models reach production |
+| Event streaming | Apache Kafka (Confluent 7.5) | Industry standard; partition-keyed for stateful aggregations |
+| Stream processing | PySpark 3.5.3 + Delta Lake 3.2.0 | Native windowing; watermarks; ACID transactions on streaming data |
+| Medallion storage | Delta Lake (local) / Azure ADLS Gen2 (cloud) | Same API locally and in cloud; time-travel for debugging |
+| Data warehouse | Snowflake | Separation of storage and compute; auto-suspend on idle |
+| Transformation | dbt Core 1.11 + dbt-utils | Version-controlled SQL; lineage graph; incremental models |
+| Orchestration | Apache Airflow 2.9 (Docker) | DAG-based scheduling; task-level retry; clear failure visibility |
+| CI/CD | GitHub Actions | dbt parse on every PR — no broken models reach main |
 
 ---
 
@@ -73,27 +112,32 @@ GitHub Actions · CI on every PR: dbt compile + dbt test
 ```
 smart-grid-stream/
 ├── iot_simulator/
-│   ├── simulator.py                  # Kafka version — local development
-│   ├── simulator_eventhub.py         # Azure Event Hubs version — cloud
+│   ├── simulator.py                  # 500 virtual meters → Kafka
+│   ├── simulator_eventhub.py         # Azure Event Hubs variant
 │   └── requirements.txt
 ├── kafka/
-│   ├── docker-compose.yml            # Kafka + Zookeeper + Kafka UI
-│   └── setup_topics.sh               # Creates topics with correct partitions
+│   ├── docker-compose.yml            # Kafka + Zookeeper + Kafka UI (port 8080)
+│   └── setup_topics.sh
 ├── spark_streaming/
-│   └── stream_processor_eventhub.py  # PySpark Structured Streaming job
+│   ├── stream_processor_local.py     # PySpark Medallion pipeline (local Delta Lake)
+│   └── stream_processor_eventhub.py  # Azure Event Hubs + ADLS variant
 ├── smart_grid_dbt/
 │   ├── models/
 │   │   ├── staging/                  # stg_meter_readings, stg_anomaly_alerts
 │   │   ├── intermediate/             # int_consumption_windowed
-│   │   └── marts/                    # fct_energy_consumption, dim_*
-│   ├── tests/
+│   │   └── marts/                    # fct_energy_consumption, dim_meters,
+│   │                                 # dim_grid_zones, dim_dates
+│   ├── packages.yml                  # dbt-utils dependency
 │   └── dbt_project.yml
 ├── orchestration/
+│   ├── docker-compose.yml            # Airflow 2.9 + PostgreSQL (port 8081)
+│   ├── dbt_profiles/profiles.yml     # dbt profile reading from env vars
 │   └── dags/
-│       └── smart_grid_dag.py         # Airflow DAG
+│       └── smart_grid_dag.py         # Hourly pipeline DAG (4 tasks)
+├── load_to_snowflake.py              # Silver Delta → Snowflake RAW loader
 └── .github/
     └── workflows/
-        └── dbt_ci.yml                # GitHub Actions CI
+        └── dbt_ci.yml                # dbt parse on every PR to main
 ```
 
 ---
@@ -101,48 +145,65 @@ smart-grid-stream/
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.10+
+- Python 3.12
 - Docker Desktop
-- VS Code
-- Azure account (free tier)
+- Java 11+ (for PySpark)
+- Snowflake account (free trial at snowflake.com)
 
-### 1 — Clone the repo
+### 1 — Clone and install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/smart-grid-stream.git
+git clone https://github.com/zibazangeneh/smart-grid-stream.git
 cd smart-grid-stream
-```
-
-### 2 — Set up Python environment
-
-```bash
-python -m venv venv
-source venv/bin/activate       # Mac/Linux
-venv\Scripts\activate          # Windows
-
 pip install -r iot_simulator/requirements.txt
 ```
 
-### 3 — Start Kafka locally
+### 2 — Start Kafka
 
 ```bash
 cd kafka
 docker compose up -d
-bash setup_topics.sh
 ```
 
-Kafka UI: http://localhost:8080
+Kafka UI: `http://localhost:8080`
 
-### 4 — Run the IoT simulator
+### 3 — Run the IoT simulator
 
 ```bash
-# Local Kafka
 python iot_simulator/simulator.py
-
-# Azure Event Hubs (set env var first)
-export EVENTHUB_CONN_STR="your-connection-string"   # Mac/Linux
-python iot_simulator/simulator_eventhub.py
 ```
+
+### 4 — Run PySpark Medallion pipeline
+
+```bash
+# Windows — set HADOOP_HOME first
+$env:HADOOP_HOME = "C:\hadoop"
+python spark_streaming/stream_processor_local.py
+```
+
+Writes Bronze / Silver / Gold Delta tables to `data/`.
+
+### 5 — Load to Snowflake and run dbt
+
+```bash
+$env:SNOWFLAKE_PASSWORD = "your-password"
+python load_to_snowflake.py
+
+cd smart_grid_dbt
+dbt deps
+dbt build
+```
+
+### 6 — Start Airflow
+
+```bash
+cd orchestration
+$env:SNOWFLAKE_PASSWORD = "your-password"
+docker compose up airflow-init
+docker compose up -d airflow-webserver airflow-scheduler
+```
+
+Airflow UI: `http://localhost:8081` — login: `admin` / `admin`
 
 ---
 
@@ -177,37 +238,30 @@ Each smart meter sends a JSON reading every 5 seconds:
 
 ## 🔐 Environment Variables
 
-No secrets are hardcoded in this project. Set these before running:
+No secrets are hardcoded. Set these before running:
 
 | Variable | Used in | Description |
 |---|---|---|
-| `EVENTHUB_CONN_STR` | simulator_eventhub.py, Databricks | Azure Event Hubs connection string |
-| `AZURE_STORAGE_KEY` | Databricks notebook | Azure ADLS Gen2 account key |
-| `KAFKA_BROKER` | simulator.py | Kafka broker address (default: localhost:9092) |
+| `SNOWFLAKE_PASSWORD` | load_to_snowflake.py, Airflow | Snowflake account password |
+| `KAFKA_BROKER` | simulator.py, stream_processor | Kafka broker (default: localhost:9092) |
+| `HADOOP_HOME` | stream_processor_local.py | Path to Hadoop winutils (Windows only) |
+
+GitHub Actions secrets: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`
 
 ---
 
 ## 📈 Project Status
 
-- [x] **Week 1** — Kafka setup + IoT simulator (500 smart meters)
+- [x] **Week 1** — Kafka setup + IoT simulator (500 smart meters, 5 German grid zones)
 - [x] **Week 2** — PySpark Structured Streaming + local Delta Lake Medallion architecture (Bronze → Silver → Gold)
 - [x] **Week 3** — dbt star schema on Snowflake (staging + intermediate + marts + tests, 27/27 passing)
 - [x] **Week 4** — Airflow orchestration + GitHub Actions CI/CD (dbt parse on every PR)
 
 ---
 
-## 🧠 What I Learned Building This
-
-- Kafka partition strategy matters: keying by `meter_id` ensures readings for the same meter always land in the same partition — critical for stateful aggregations downstream
-- PySpark watermarking is not optional for IoT data: out-of-order events will silently break windowed aggregations without it
-- Azure Event Hubs as a Kafka-compatible endpoint is a clean enterprise pattern — same producer code, managed infrastructure, no Kafka ops
-- Never hardcode secrets: environment variables keep credentials out of version control entirely
-
----
-
 ## 👩‍💻 About Me
 
-I'm a data engineer with a PhD in Physics, based in Aachen, NRW. My background is in pharma/life sciences data pipelines — ETL, data governance, GDPR compliance. I built this project to expand into modern cloud-native streaming, which is where the German data engineering market is heading in 2026.
+I am a data engineer with a PhD in Physics, based in Aachen, NRW. My background is in pharma/life sciences data pipelines — ETL, data governance, GDPR compliance. I built this project to expand into modern cloud-native streaming, which is where the German data engineering market is heading in 2026.
 
 📍 Aachen, NRW · 🇩🇪 German citizen · Open to Senior Data Engineer roles in NRW
 
