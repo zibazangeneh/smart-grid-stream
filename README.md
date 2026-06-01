@@ -17,9 +17,19 @@
 
 ## 💡 Why I Built This
 
-Germany's *Energiewende* — the national energy transition — generates enormous amounts of sensor data across the power grid. As a data engineer based in NRW, I wanted to build something that reflects a real problem in this region: how do you process hundreds of thousands of smart meter readings in real time, detect anomalies, and make the data available for analysis?
+Germany's Energiewende is transforming how energy is produced, distributed, and consumed. Across the grid, millions of sensors and smart meters generate a continuous stream of operational data that must be processed, monitored, and analyzed in near real time.
 
-This project is my answer. It is not a tutorial follow-along — I designed the architecture, chose the tools, and built it end to end. The goal was to close the gap between the batch ETL work I have done professionally and the streaming, cloud-native stack that modern senior DE roles in Germany require in 2026.
+As a data engineer based in NRW, I wanted to build a project around a problem that is both technically interesting and highly relevant to the region: how can large-scale smart meter data be ingested, processed, modeled, and made available for analytics in a modern cloud-native data platform?
+
+This project is my answer.
+
+Rather than following a tutorial or reproducing an existing example, I designed the architecture, selected the technology stack, and implemented the platform end to end. The system simulates hundreds of IoT smart meters across NRW grid zones, streams live consumption events through Kafka, processes them with Spark, stores them in a Medallion architecture, and delivers curated analytical models through dbt and Snowflake.
+
+Professionally, much of my experience has been in designing and implementing data warehouse solutions within regulated industries. Building this project allowed me to apply the same data engineering fundamentals—data modeling, data quality, governance, orchestration, and scalability—to a modern streaming and ELT architecture.
+
+One of the key observations from this work is that while the technology stack continues to evolve, the core principles of good data engineering remain the same. Modern platforms provide new capabilities, but success still depends on thoughtful architecture, reliable pipelines, and well-designed data models.
+
+This repository documents the architecture, implementation decisions, and lessons learned from building a production-inspired streaming data platform from the ground up.
 
 ---
 
