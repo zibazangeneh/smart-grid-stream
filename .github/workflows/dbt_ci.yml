@@ -3,44 +3,54 @@ name: dbt CI
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'smart_grid_dbt/**'
 
 jobs:
-  dbt-test:
+  dbt-build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install dbt
+        run: pip install dbt-snowflake==1.11.5
+
+      - name: Install dbt packages
+        working-directory: smart_grid_dbt
+        run: dbt deps
+
+      - name: Write profiles.yml
         run: |
-          pip install dbt-snowflake==1.8.0
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << EOF
+          smart_grid:
+            target: ci
+            outputs:
+              ci:
+                type: snowflake
+                account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+                user: ${{ secrets.SNOWFLAKE_USER }}
+                password: ${{ secrets.SNOWFLAKE_PASSWORD }}
+                role: ACCOUNTADMIN
+                warehouse: SMART_GRID_WH
+                database: SMART_GRID_DB
+                schema: CI_${{ github.event.pull_request.number }}
+                threads: 4
+          EOF
 
-      - name: dbt compile
+      - name: dbt build (models + tests)
         working-directory: smart_grid_dbt
-        env:
-          SNOWFLAKE_ACCOUNT:   ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER:      ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD:  ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_DATABASE:  ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_SCHEMA:    ${{ secrets.SNOWFLAKE_SCHEMA }}
-        run: dbt compile --target ci
+        run: dbt build --target ci
 
-      - name: dbt test
+      - name: dbt cleanup CI schema
+        if: always()
         working-directory: smart_grid_dbt
-        env:
-          SNOWFLAKE_ACCOUNT:   ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER:      ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD:  ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_DATABASE:  ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_SCHEMA:    ${{ secrets.SNOWFLAKE_SCHEMA }}
-        run: dbt test --target ci --select state:modified+
+        run: |
+          dbt run-operation drop_schema \
+            --args "{'schema_name': 'CI_${{ github.event.pull_request.number }}'}" \
+            --target ci || true
