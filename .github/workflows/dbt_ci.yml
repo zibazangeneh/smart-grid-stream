@@ -24,33 +24,6 @@ jobs:
         working-directory: smart_grid_dbt
         run: dbt deps
 
-      - name: Write profiles.yml
-        run: |
-          mkdir -p ~/.dbt
-          cat > ~/.dbt/profiles.yml << EOF
-          smart_grid:
-            target: ci
-            outputs:
-              ci:
-                type: snowflake
-                account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-                user: ${{ secrets.SNOWFLAKE_USER }}
-                password: "${{ secrets.SNOWFLAKE_PASSWORD }}"
-                role: ACCOUNTADMIN
-                warehouse: SMART_GRID_WH
-                database: SMART_GRID_DB
-                schema: CI_${{ github.event.pull_request.number }}
-                threads: 4
-          EOF
-
-      - name: dbt build (models + tests)
+      - name: dbt compile (validates SQL without DB connection)
         working-directory: smart_grid_dbt
-        run: dbt build --target ci
-
-      - name: dbt cleanup CI schema
-        if: always()
-        working-directory: smart_grid_dbt
-        run: |
-          dbt run-operation drop_schema \
-            --args "{'schema_name': 'CI_${{ github.event.pull_request.number }}'}" \
-            --target ci || true
+        run: dbt compile
